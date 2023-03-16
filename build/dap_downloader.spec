@@ -5,7 +5,7 @@ block_cipher = None
 
 
 a = Analysis(
-    ['../dap_downloader.py'],
+    ['../src/dap_downloader.py'],
     pathex=[],
     binaries=[],
     datas=[('./venv/Lib/site-packages/libusb_package/libusb-1.0.dll', '.'),('./venv/Lib/site-packages/cmsis_pack_manager/cmsis_pack_manager/native.so','./cmsis_pack_manager/cmsis_pack_manager/.')],

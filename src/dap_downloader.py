@@ -7,16 +7,14 @@ import tkinter.ttk as ttk
 from pygubu.widgets.pathchooserinput import PathChooserInput
 import threading
 import datetime
-import os,sys
+import os,sys,time
 import webbrowser
 from pyocd.core.helpers import ConnectHelper
 from pyocd.flash.file_programmer import FileProgrammer
 from pyocd.flash.eraser import FlashEraser
 from pyocd.probe.aggregator import PROBE_CLASSES
-# from pyocd.probe.cmsis_dap_probe import CMSISDAPProbe
-# PROBE_CLASSES["cmsisdap"] = CMSISDAPProbe
-from pyocd.probe.stlink_probe import StlinkProbe
-PROBE_CLASSES["stlink"] = StlinkProbe
+from pyocd.probe.cmsis_dap_probe import CMSISDAPProbe
+PROBE_CLASSES["cmsisdap"] = CMSISDAPProbe
 
 bin_path = ''
 yaml_path = ''
@@ -30,8 +28,7 @@ show_about = (
 'Copyright@%s'%copyright
 )
 
-
-def download_bin():
+def download_bin(ui):
     is_err_download = False
     try:
         with ConnectHelper.session_with_chosen_probe() as session:
@@ -42,53 +39,65 @@ def download_bin():
             target.reset_and_halt()
             target.resume()
     except Exception as r:
-        app.out.insert('end',r)
-        app.out.insert('end',"\r\n")
+        ui.out.insert('end',r)
+        ui.out.insert('end',"\r\n")
         is_err_download = True
     finally:
         if is_err_download == False:
-            app.out.insert('end',"-------------烧录成功--------------\r\n")
+            ui.out.edit_undo()
+            app.out.insert('end','\r\n['+ 20*'='+']     100%\r\n')
+#            time.sleep(0.5)
+            ui.out.insert('end',"-------------烧录成功--------------\r\n")
         else:
-            app.out.insert('end',"-------------烧录失败--------------\r\n")
-        app.out.insert('end',datetime.datetime.now().strftime('%Y-%m-%d  %H:%M:%S'))
-        app.out.insert('end','\r\n')
+            ui.out.insert('end',"-------------烧录失败--------------\r\n")
+        ui.out.insert('end',datetime.datetime.now().strftime('%Y-%m-%d  %H:%M:%S'))
+        ui.out.insert('end','\r\n')
         
-def erase_bin():
+def erase_bin(ui):
     is_err_erase= False
     try:
         with ConnectHelper.session_with_chosen_probe() as session:
             FlashEraser(session,mode = FlashEraser.Mode.CHIP).erase()
     except Exception as r:
-        app.out.insert('end',r)
-        app.out.insert('end',"\r\n")
+        ui.out.insert('end',r)
+        ui.out.insert('end',"\r\n")
         is_err_erase = True
     finally:
         if is_err_erase == False:
-            app.out.insert('end',"-------------擦除完毕--------------\r\n")
+            ui.out.insert('end',"-------------擦除完毕--------------\r\n")
         else:
-            app.out.insert('end',"-------------擦除失败--------------\r\n")
-        app.out.insert('end',datetime.datetime.now().strftime('%Y-%m-%d  %H:%M:%S'))
-        app.out.insert('end','\r\n')
-
+            ui.out.insert('end',"-------------擦除失败--------------\r\n")
+        ui.out.insert('end',datetime.datetime.now().strftime('%Y-%m-%d  %H:%M:%S'))
+        ui.out.insert('end','\r\n')
 
 class std2tk(object): 
-    def __init__(self):
+    def __init__(self,tk):
         self._buff = ""
+        self.tk = tk
     def write(self, out_stream): 
-        app.out.insert('end',out_stream)
+        self.tk.down_progress+=1
+        if(self.tk.down_progress>169):
+            self.tk.down_progress = 169
+        self.tk.out.edit_undo()
+        progress = (int)(self.tk.down_progress/17*2)
+        self.tk.out.insert('end','\r\n['+                            progress*'='+                           +(20 - progress)*' '+                           ']   %.2f%%\r\n'%(self.tk.down_progress/1.7))
     def flush(self): 
-        self._buff = ""
-
+        pass
 
 class PyocdApp:
     def __init__(self, master=None):
+        # pragrm
+        self.down_progress = 0
+        
+        
+        
         # build ui
         self.toplevel1 = tk.Tk() if master is None else tk.Toplevel(master)
         #menu
         self.menu1 = tk.Menu(self.toplevel1,tearoff = True)
 
         self.mi_download = 1
-        self.menu1.add('command', font='{宋体} 9 {}', label='获取固件')
+        self.menu1.add('command', font='{宋体} 9 {}', label='获取')
         _wcmd = lambda itemid="download": self.menucallback(itemid)
         self.menu1.entryconfigure(self.mi_download, command=_wcmd)
         self.toplevel1.configure(menu=self.menu1)
@@ -121,7 +130,7 @@ class PyocdApp:
         self.labelframe2.pack(fill='x', side='top')
         self.frame1 = ttk.Frame(self.gui)
 
-        self.out = tk.Text(self.frame1)
+        self.out = tk.Text(self.frame1,undo=True,maxundo = 1)
         self.out.configure(background='#000000',font='{宋体} 10 {}', foreground='#00ff00', height='9', relief='groove')
         self.out.configure(width='50')
         self.out.pack(anchor='center', expand='true', fill='both', side='top')
@@ -165,16 +174,17 @@ class PyocdApp:
         if itemid == 'about':
             tk.messagebox.showinfo(title="关于",message = show_about)
         elif itemid =='help':
-            webbrowser.open('https://github.com/USTHzhanglu/dap_download/readme.md',new=0)
+            webbrowser.open('http://10.10.40.161:3000/MS300/ms300_firmware/src/master/tools/readme.md',new=0)
         elif itemid =='download':  
-            if tk.messagebox.askokcancel("download", "是否获取固件?"):
-                webbrowser.open('https://github.com/USTHzhanglu/dap_download',new=0)
+            if tk.messagebox.askokcancel("download", "是否转到下载页?"):
+                webbrowser.open('http://10.10.40.161:3000/MS300/ms300_firmware/archive/master.tar.gz',new=0)
         
     def download(self):
         global bin_path
         global yaml_path
         bin_path = self.binchooserinput.cget('path')
         yaml_path = self.pathchooserinput1.cget('path')
+        self.down_progress = 0
         if (bin_path and yaml_path):
             self.out.delete('1.0','end')
             self.out.insert('end',"bin:%s"%(bin_path))
@@ -186,8 +196,9 @@ class PyocdApp:
             
             self.out.insert('end','-------------开始烧录--------------\r\n')
             self.out.insert('end',datetime.datetime.now().strftime('%Y-%m-%d  %H:%M:%S'))
-            self.out.insert('end','\r\n')
-            download = threading.Thread(target=download_bin)
+            self.out.edit_separator()
+            self.out.insert('end','\r\n----------正在连接设备-------------\r\n')
+            download = threading.Thread(target=download_bin,args=(app,))
             if download.is_alive() is False:
                 download.start() 
             else:
@@ -209,7 +220,7 @@ class PyocdApp:
                 self.out.insert('end','-------------开始擦除--------------\r\n')
                 self.out.insert('end',datetime.datetime.now().strftime('%Y-%m-%d  %H:%M:%S'))
                 self.out.insert('end','\r\n')
-                erase = threading.Thread(target=erase_bin)
+                erase = threading.Thread(target=erase_bin,args=(app,))
                 if erase.is_alive() is False:
                     erase.start() 
                 else:
@@ -227,10 +238,10 @@ class PyocdApp:
             if tk.messagebox.askokcancel("Quit", "你确定要退出吗?"):
                 self.mainwindow.destroy()
 
+
 if __name__ == '__main__':
     app = PyocdApp()
-    _std = std2tk()
+    _std = std2tk(app)
     sys.stdout = _std
     app.run()
-
 
