@@ -18,11 +18,11 @@ PROBE_CLASSES["cmsisdap"] = CMSISDAPProbe
 
 bin_path = ''
 yaml_path = ''
-version = '1.0.0'
+version = '0.0.1'
 author = 'USTHzhanglu@outlook.com'
 copyright = 'USTHzhanglu'
 show_about = (
-'dap_download\r\n\r\n'+
+'dap_downloader\r\n\r\n'+
 'Version:%s\r\n'%version+
 'Author:%s\r\n'%author+
 'Copyright@%s'%copyright
@@ -80,7 +80,10 @@ class std2tk(object):
             self.tk.down_progress = 169
         self.tk.out.edit_undo()
         progress = (int)(self.tk.down_progress/17*2)
-        self.tk.out.insert('end','\r\n['+                            progress*'='+                           +(20 - progress)*' '+                           ']   %.2f%%\r\n'%(self.tk.down_progress/1.7))
+        self.tk.out.insert('end','\r\n['+ \
+                           progress*'='+\
+                           +(20 - progress)*' '+\
+                           ']   %.2f%%\r\n'%(self.tk.down_progress/1.7))
     def flush(self): 
         pass
 
@@ -174,11 +177,11 @@ class PyocdApp:
         if itemid == 'about':
             tk.messagebox.showinfo(title="关于",message = show_about)
         elif itemid =='help':
-            webbrowser.open('http://10.10.40.161:3000/MS300/ms300_firmware/src/master/tools/readme.md',new=0)
+            webbrowser.open('https://github.com/USTHzhanglu/dap_download/readme.md',new=0)
         elif itemid =='download':  
-            if tk.messagebox.askokcancel("download", "是否转到下载页?"):
-                webbrowser.open('http://10.10.40.161:3000/MS300/ms300_firmware/archive/master.tar.gz',new=0)
-        
+            if tk.messagebox.askokcancel("download", "是否转到Github?"):
+                webbrowser.open('https://github.com/USTHzhanglu/dap_download',new=0)      
+
     def download(self):
         global bin_path
         global yaml_path
