@@ -1,0 +1,4 @@
+target_override: GD32F310G8
+pack:
+  ./GD32F3x0_DFP.3.0.2.pack
+frequency: 10000000
