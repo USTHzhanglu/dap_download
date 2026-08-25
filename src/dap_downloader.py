@@ -1,74 +1,43 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-import pathlib
+import ctypes
+import sys
+import threading
+import webbrowser
+
 import tkinter as tk
 import tkinter.ttk as ttk
 from pygubu.widgets.pathchooserinput import PathChooserInput
-import threading
-import datetime
-import os,sys,time
-import webbrowser
-from pyocd.core.helpers import ConnectHelper
-from pyocd.flash.file_programmer import FileProgrammer
-from pyocd.flash.eraser import FlashEraser
-from pyocd.probe.aggregator import PROBE_CLASSES
-from pyocd.probe.cmsis_dap_probe import CMSISDAPProbe
-PROBE_CLASSES["cmsisdap"] = CMSISDAPProbe
 
-bin_path = ''
-yaml_path = ''
-version = '0.0.1'
-author = 'USTHzhanglu@outlook.com'
-copyright = 'USTHzhanglu'
+from core import Flasher
+from version import __appname__, __version__, __author__, __copyright__
+
 show_about = (
-'dap_downloader\r\n\r\n'+
-'Version:%s\r\n'%version+
-'Author:%s\r\n'%author+
-'Copyright@%s'%copyright
+__appname__+'\r\n\r\n'+
+'Version:%s\r\n'%__version__+
+'Author:%s\r\n'%__author__+
+'Copyright@%s'%__copyright__
 )
 
-def download_bin(ui):
-    is_err_download = False
+DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = ctypes.c_void_p(-4)
+
+
+def _enable_dpi_awareness():
     try:
-        with ConnectHelper.session_with_chosen_probe() as session:
-            target = session.target
-            # Load firmware into device.
-            FileProgrammer(session,progress = None).program(bin_path)
-            # Reset, run.
-            target.reset_and_halt()
-            target.resume()
-    except Exception as r:
-        ui.out.insert('end',r)
-        ui.out.insert('end',"\r\n")
-        is_err_download = True
-    finally:
-        if is_err_download == False:
-            ui.out.edit_undo()
-            app.out.insert('end','\r\n['+ 20*'='+']     100%\r\n')
-#            time.sleep(0.5)
-            ui.out.insert('end',"-------------烧录成功--------------\r\n")
-        else:
-            ui.out.insert('end',"-------------烧录失败--------------\r\n")
-        ui.out.insert('end',datetime.datetime.now().strftime('%Y-%m-%d  %H:%M:%S'))
-        ui.out.insert('end','\r\n')
-        
-def erase_bin(ui):
-    is_err_erase= False
+        ctypes.windll.user32.SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
+        return
+    except Exception:
+        pass
     try:
-        with ConnectHelper.session_with_chosen_probe() as session:
-            FlashEraser(session,mode = FlashEraser.Mode.CHIP).erase()
-    except Exception as r:
-        ui.out.insert('end',r)
-        ui.out.insert('end',"\r\n")
-        is_err_erase = True
-    finally:
-        if is_err_erase == False:
-            ui.out.insert('end',"-------------擦除完毕--------------\r\n")
-        else:
-            ui.out.insert('end',"-------------擦除失败--------------\r\n")
-        ui.out.insert('end',datetime.datetime.now().strftime('%Y-%m-%d  %H:%M:%S'))
-        ui.out.insert('end','\r\n')
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        return
+    except Exception:
+        pass
+    try:
+        ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
 
 class std2tk(object): 
     def __init__(self,tk):
@@ -82,27 +51,27 @@ class std2tk(object):
         progress = (int)(self.tk.down_progress/17*2)
         self.tk.out.insert('end','\r\n['+ \
                            progress*'='+\
-                           +(20 - progress)*' '+\
+                           (20 - progress)*' '+\
                            ']   %.2f%%\r\n'%(self.tk.down_progress/1.7))
     def flush(self): 
         pass
 
 class PyocdApp:
     def __init__(self, master=None):
-        # pragrm
+        _enable_dpi_awareness()
+        self._flasher = Flasher(log=self._append_log)
         self.down_progress = 0
-        
-        
-        
+
         # build ui
         self.toplevel1 = tk.Tk() if master is None else tk.Toplevel(master)
+        self.toplevel1.withdraw()
         #menu
         self.menu1 = tk.Menu(self.toplevel1,tearoff = True)
 
-        self.mi_download = 1
-        self.menu1.add('command', font='{宋体} 9 {}', label='获取')
-        _wcmd = lambda itemid="download": self.menucallback(itemid)
-        self.menu1.entryconfigure(self.mi_download, command=_wcmd)
+        self.mi_scan = 1
+        self.menu1.add('command', font='{宋体} 9 {}', label='扫描探针')
+        _wcmd = lambda itemid="scan": self.menucallback(itemid)
+        self.menu1.entryconfigure(self.mi_scan, command=_wcmd)
         self.toplevel1.configure(menu=self.menu1)
         
         self.mi_help = 2
@@ -134,31 +103,33 @@ class PyocdApp:
         self.frame1 = ttk.Frame(self.gui)
 
         self.out = tk.Text(self.frame1,undo=True,maxundo = 1)
-        self.out.configure(background='#000000',font='{宋体} 10 {}', foreground='#00ff00', height='9', relief='groove')
-        self.out.configure(width='50')
-        self.out.pack(anchor='center', expand='true', fill='both', side='top')
-        
+        self.out.configure(background='#000000',font='{宋体} 10 {}', foreground='#00ff00', height='20', relief='groove')
+        self.out.configure(width='42')
+        self.out.pack(anchor='center', side='top')
+
         self.erase = tk.Button(self.frame1)
         self.erase.configure(relief='groove', text='擦除程序')
-        self.erase.pack(anchor='center', ipadx='15', padx='20', pady='10', side='left')
+        self.erase.pack(anchor='center', ipadx='10p',
+                        padx='13p', pady='7p', side='left')
         self.erase.configure(command=self.erasechip)
         self.start = tk.Button(self.frame1)
         self.start.configure(relief='groove', text='开始下载')
-        self.start.pack(anchor='center', ipadx='15', padx='20', pady='10', side='right')
+        self.start.pack(anchor='center', ipadx='10p',
+                        padx='13p', pady='7p', side='right')
         self.start.configure(command=self.download)
-        
-        self.frame1.pack(anchor='center', expand='true', fill='both', side='bottom')
-        self.gui.configure(height='480', relief='flat', width='320')
-        self.gui.pack(anchor='center', side='top')
-        self.gui.pack_propagate(0)
-        self.toplevel1.configure(height='480', width='320')
-#        self.toplevel1.geometry('320x480')
-#自适应屏幕居中
-        self.toplevel1.geometry('320x480' + '+'
-                            + str((self.toplevel1.winfo_screenwidth() - 320) // 2) + '+'
-                            + str((self.toplevel1.winfo_screenheight() - 480) // 2 - 18))
 
-        self.toplevel1.title('dap_download')
+        self.frame1.pack(anchor='center', side='bottom')
+        self.gui.pack(anchor='center', side='top')
+        self.toplevel1.update_idletasks()
+        w = self.toplevel1.winfo_reqwidth()
+        h = self.toplevel1.winfo_reqheight()
+#自适应屏幕居中
+        self.toplevel1.geometry('+%d+%d' % (
+            (self.toplevel1.winfo_screenwidth() - w) // 2,
+            (self.toplevel1.winfo_screenheight() - h) // 2 - 18))
+        self.toplevel1.deiconify()
+
+        self.toplevel1.title(__appname__)
         self.toplevel1.resizable(False, False)
         self.toplevel1.attributes('-alpha',0.95)        
         
@@ -171,20 +142,20 @@ class PyocdApp:
     
     def run(self):
         self.mainwindow.mainloop()
-        
-        
+
+    def _append_log(self, msg):
+        self.out.insert('end', msg)
+        self.out.insert('end', '\r\n')
+
     def menucallback(self, itemid):
         if itemid == 'about':
             tk.messagebox.showinfo(title="关于",message = show_about)
         elif itemid =='help':
-            webbrowser.open('https://github.com/USTHzhanglu/dap_download/readme.md',new=0)
-        elif itemid =='download':  
-            if tk.messagebox.askokcancel("download", "是否转到Github?"):
-                webbrowser.open('https://github.com/USTHzhanglu/dap_download',new=0)      
+            webbrowser.open('https://github.com/USTHzhanglu/dap_download/blob/main/readme.md',new=0)
+        elif itemid =='scan':
+            self.scan_probe()      
 
     def download(self):
-        global bin_path
-        global yaml_path
         bin_path = self.binchooserinput.cget('path')
         yaml_path = self.pathchooserinput1.cget('path')
         self.down_progress = 0
@@ -194,43 +165,30 @@ class PyocdApp:
             self.out.insert('end','\r\n')
             self.out.insert('end',"dir:%s"%(yaml_path))
             self.out.insert('end','\r\n')
-            
-            os.chdir(yaml_path)
-            
-            self.out.insert('end','-------------开始烧录--------------\r\n')
-            self.out.insert('end',datetime.datetime.now().strftime('%Y-%m-%d  %H:%M:%S'))
             self.out.edit_separator()
-            self.out.insert('end','\r\n----------正在连接设备-------------\r\n')
-            download = threading.Thread(target=download_bin,args=(app,))
-            if download.is_alive() is False:
-                download.start() 
-            else:
-                self.out.insert('end','烧录失败\r\n')  
+            threading.Thread(target=self._flasher.download,
+                             args=(bin_path, yaml_path), daemon=True).start()
         else :
             self.out.delete('1.0','end')
             self.out.insert('end','请选择有效的bin文件或文件夹路径\r\n')
             
     def erasechip(self):
-        global yaml_path
         yaml_path = self.pathchooserinput1.cget('path')
         if yaml_path:
             self.out.delete('1.0','end')
             self.out.insert('end',"dir:%s"%(yaml_path))
             self.out.insert('end','\r\n')
-            os.chdir(yaml_path)
-            
             if tk.messagebox.askokcancel("erase", "你确定要擦除吗?"):
-                self.out.insert('end','-------------开始擦除--------------\r\n')
-                self.out.insert('end',datetime.datetime.now().strftime('%Y-%m-%d  %H:%M:%S'))
-                self.out.insert('end','\r\n')
-                erase = threading.Thread(target=erase_bin,args=(app,))
-                if erase.is_alive() is False:
-                    erase.start() 
-                else:
-                    self.out.insert('end','擦除失败\r\n')
+                threading.Thread(target=self._flasher.erase,
+                                 args=(yaml_path,), daemon=True).start()
         else :
             self.out.delete('1.0','end')
             self.out.insert('end','请选择有效的文件夹路径\r\n')
+
+    def scan_probe(self):
+        self.out.delete('1.0','end')
+        self.out.insert('end','-------------扫描探针--------------\r\n')
+        threading.Thread(target=self._flasher.scan_probes, daemon=True).start()
     
             
     def press_key(self,event):
