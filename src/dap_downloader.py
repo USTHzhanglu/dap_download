@@ -11,15 +11,13 @@ import tkinter.ttk as ttk
 from pygubu.widgets.pathchooserinput import PathChooserInput
 
 from core import Flasher
+from version import __appname__, __version__, __author__, __copyright__
 
-version = '0.0.1'
-author = 'USTHzhanglu@outlook.com'
-copyright = 'USTHzhanglu'
 show_about = (
-'dap_downloader\r\n\r\n'+
-'Version:%s\r\n'%version+
-'Author:%s\r\n'%author+
-'Copyright@%s'%copyright
+__appname__+'\r\n\r\n'+
+'Version:%s\r\n'%__version__+
+'Author:%s\r\n'%__author__+
+'Copyright@%s'%__copyright__
 )
 
 DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = ctypes.c_void_p(-4)
@@ -66,13 +64,14 @@ class PyocdApp:
 
         # build ui
         self.toplevel1 = tk.Tk() if master is None else tk.Toplevel(master)
+        self.toplevel1.withdraw()
         #menu
         self.menu1 = tk.Menu(self.toplevel1,tearoff = True)
 
-        self.mi_download = 1
-        self.menu1.add('command', font='{宋体} 9 {}', label='获取')
-        _wcmd = lambda itemid="download": self.menucallback(itemid)
-        self.menu1.entryconfigure(self.mi_download, command=_wcmd)
+        self.mi_scan = 1
+        self.menu1.add('command', font='{宋体} 9 {}', label='扫描探针')
+        _wcmd = lambda itemid="scan": self.menucallback(itemid)
+        self.menu1.entryconfigure(self.mi_scan, command=_wcmd)
         self.toplevel1.configure(menu=self.menu1)
         
         self.mi_help = 2
@@ -107,7 +106,7 @@ class PyocdApp:
         self.out.configure(background='#000000',font='{宋体} 10 {}', foreground='#00ff00', height='20', relief='groove')
         self.out.configure(width='42')
         self.out.pack(anchor='center', side='top')
-        
+
         self.erase = tk.Button(self.frame1)
         self.erase.configure(relief='groove', text='擦除程序')
         self.erase.pack(anchor='center', ipadx='10p',
@@ -118,7 +117,7 @@ class PyocdApp:
         self.start.pack(anchor='center', ipadx='10p',
                         padx='13p', pady='7p', side='right')
         self.start.configure(command=self.download)
-        
+
         self.frame1.pack(anchor='center', side='bottom')
         self.gui.pack(anchor='center', side='top')
         self.toplevel1.update_idletasks()
@@ -128,8 +127,9 @@ class PyocdApp:
         self.toplevel1.geometry('+%d+%d' % (
             (self.toplevel1.winfo_screenwidth() - w) // 2,
             (self.toplevel1.winfo_screenheight() - h) // 2 - 18))
+        self.toplevel1.deiconify()
 
-        self.toplevel1.title('dap_download')
+        self.toplevel1.title(__appname__)
         self.toplevel1.resizable(False, False)
         self.toplevel1.attributes('-alpha',0.95)        
         
@@ -152,9 +152,8 @@ class PyocdApp:
             tk.messagebox.showinfo(title="关于",message = show_about)
         elif itemid =='help':
             webbrowser.open('https://github.com/USTHzhanglu/dap_download/blob/main/readme.md',new=0)
-        elif itemid =='download':  
-            if tk.messagebox.askokcancel("download", "是否转到Github?"):
-                webbrowser.open('https://github.com/USTHzhanglu/dap_download',new=0)      
+        elif itemid =='scan':
+            self.scan_probe()      
 
     def download(self):
         bin_path = self.binchooserinput.cget('path')
@@ -185,6 +184,11 @@ class PyocdApp:
         else :
             self.out.delete('1.0','end')
             self.out.insert('end','请选择有效的文件夹路径\r\n')
+
+    def scan_probe(self):
+        self.out.delete('1.0','end')
+        self.out.insert('end','-------------扫描探针--------------\r\n')
+        threading.Thread(target=self._flasher.scan_probes, daemon=True).start()
     
             
     def press_key(self,event):

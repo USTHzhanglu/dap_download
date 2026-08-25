@@ -8,11 +8,6 @@ from typing import Callable, Optional
 from pyocd.core.helpers import ConnectHelper
 from pyocd.flash.file_programmer import FileProgrammer
 from pyocd.flash.eraser import FlashEraser
-from pyocd.probe.aggregator import PROBE_CLASSES
-from pyocd.probe.cmsis_dap_probe import CMSISDAPProbe
-
-# 注册 cmsis-dap 探针
-PROBE_CLASSES["cmsisdap"] = CMSISDAPProbe
 
 LogFunc = Callable[[str], None]
 
@@ -65,3 +60,16 @@ class Flasher:
                 self._log("-------------擦除失败--------------")
             self._log(datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S"))
         return ok
+
+    def scan_probes(self):
+        try:
+            probes = ConnectHelper.get_all_connected_probes(blocking=False)
+        except Exception as r:
+            self._log(str(r))
+            return
+        if not probes:
+            self._log("未检测到探针")
+            return
+        for probe in probes:
+            desc = f"{probe.vendor_name} {probe.product_name}".strip()
+            self._log(f"{desc}  unique_id={probe.unique_id}")
