@@ -1,3 +1,10 @@
-build/venv/*
-build/build/dap_downloader/*
-build/dist/*
+# Python 缓存
+__pycache__/
+*.py[cod]
+
+# 虚拟环境
+venv/
+
+# PyInstaller 打包产物
+build/*/
+dist/

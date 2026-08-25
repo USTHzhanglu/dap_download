@@ -1,14 +1,23 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import os
+from PyInstaller.utils.hooks import collect_data_files
+
+SP = os.path.abspath(os.path.join(SPECPATH, '..'))
+VENV_SP = os.path.join(SP, 'venv', 'Lib', 'site-packages')
+
 
 block_cipher = None
 
 
 a = Analysis(
-    ['../src/dap_downloader.py'],
+    [os.path.join(SP, 'src', 'dap_downloader.py')],
     pathex=[],
     binaries=[],
-    datas=[('./venv/Lib/site-packages/libusb_package/libusb-1.0.dll', '.'),('./venv/Lib/site-packages/cmsis_pack_manager/cmsis_pack_manager/native.so','./cmsis_pack_manager/cmsis_pack_manager/.')],
+    datas=collect_data_files('pyocd') + [
+        (os.path.join(VENV_SP, 'libusb_package', 'libusb-1.0.dll'), '.'),
+        (os.path.join(VENV_SP, 'cmsis_pack_manager', 'cmsis_pack_manager', 'cmsis_pack_manager.dll'), 'cmsis_pack_manager/cmsis_pack_manager'),
+    ],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
