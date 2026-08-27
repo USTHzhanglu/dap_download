@@ -57,7 +57,7 @@ block_cipher = None
 a = Analysis(
     [os.path.join(SP, 'src', 'dap_downloader.py')],
     pathex=[],
-    binaries=collect_dynamic_libs('cmsis_pack_manager') + collect_dynamic_libs('libusb_package'),
+    binaries=collect_dynamic_libs('libusb_package'),
     datas=collect_data_files('pyocd', excludes=['debug/svd']) + [
         (get_package_paths('pylink')[1], 'pylink'),
     ] + datas_probe + datas_rtos,
@@ -65,7 +65,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=['cmsis_pack_manager'],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -76,10 +76,8 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
     [],
+    exclude_binaries=True,
     name=__appname__,
     debug=False,
     bootloader_ignore_signals=False,
@@ -94,4 +92,15 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     version=version_info,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name=__appname__,
 )

@@ -1,4 +1,5 @@
 # 直接依赖(传递依赖由 pip 自动安装)
 pyocd==0.45.1
-pygubu==0.41.2
 pyinstaller==6.22.2
+tksheet==7.6.0
+windnd==1.0.7
