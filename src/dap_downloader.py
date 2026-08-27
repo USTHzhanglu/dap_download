@@ -379,7 +379,7 @@ class PyocdApp:
             tk.messagebox.showinfo(title="About",
                                     message=show_about)
         elif itemid =='help':
-            webbrowser.open('https://github.com/USTHzhanglu/dap_download/blob/main/readme.md',new=0)
+            webbrowser.open('https://github.com/USTHzhanglu/dap_download/blob/main/README.md',new=0)
 
     def _browse_bin(self):
         from tkinter import filedialog
