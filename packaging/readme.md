@@ -18,8 +18,8 @@ python -m venv venv
 venv\Scripts\activate
 pip install -r packaging\requirements.txt
 
-# Create single-file executables
+# Package as a directory (onedir) build; output lands in .\dist\<name>\
 pyinstaller packaging\dap_downloader.spec
 ```
 
-In ./dist folder, there will be a single executable file per tool which is ready to use or distribute it to other library.
+The build produces a folder `.\.\dist\<name>\` containing the executable and its dependencies (a directory-mode / onedir build, not a single file). Distribute that folder as-is: the `.exe` plus its `_internal` folder must be kept together.
