@@ -2,6 +2,7 @@
 import os
 import tkinter as tk
 import tkinter.ttk as ttk
+import tkinter.messagebox as messagebox
 
 from tksheet import Sheet
 from pack_manager import BUILTIN_REF
@@ -11,23 +12,27 @@ class PackManagerDialog(tk.Toplevel):
     """Pack manager dialog: lists installed packs, allows removal.
 
     library: PackLibrary instance.
-    on_removed: optional callable(removed_device_names) after each removal.
+    provider: optional ObProvider (auto read descriptors, enables the Option column).
+    on_removed / on_added / on_toggled: optional callbacks.
     """
 
-    def __init__(self, master, library, on_removed=None, on_added=None, on_toggled=None):
+    def __init__(self, master, library, provider=None,
+                 on_removed=None, on_added=None, on_toggled=None):
         super().__init__(master)
         self.title('Pack Manager')
         self.transient(master)
         self.resizable(False, False)
         self.withdraw()
         self._library = library
+        self._provider = provider
         self.on_removed = on_removed
         self.on_added = on_added
         self.on_toggled = on_toggled
         self._hl_row = None
 
-        self.cols = [('vendor', 'Vendor', 360), ('pack', 'Pack', 360),
-                     ('version', 'Version', 160), ('status', 'Status', 120)]
+        self.cols = [('vendor', 'Vendor', 330), ('pack', 'Pack', 330),
+                     ('version', 'Version', 140), ('status', 'Status', 140),
+                     ('option', 'Option', 140)]
         self._refresh()
         self._build_ui()
 
@@ -46,6 +51,15 @@ class PackManagerDialog(tk.Toplevel):
                    self._library.builtin_version(), self._library.builtin_enabled())
         self._list = [builtin] + packs
 
+    def _opt_for(self, ref):
+        """Whether option bytes can be read for this pack (auto from SVD)."""
+        if self._provider is None or ref == BUILTIN_REF:
+            return '-'
+        try:
+            return self._provider.support_for_pack(ref)
+        except Exception:
+            return '-'
+
     def _build_ui(self):
         cols = self.cols
 
@@ -53,6 +67,7 @@ class PackManagerDialog(tk.Toplevel):
         add_btn = ttk.Button(btn_frame, text='Add', width=10, command=self._add)
         toggle_btn = ttk.Button(btn_frame, text='Enable/Disable', width=14, command=self._toggle)
         remove_btn = ttk.Button(btn_frame, text='Remove', width=10, command=self._remove)
+
         mid = tk.Frame(self, bg='white')
         head_frame = tk.Frame(mid, bg='white')
         for i, (key, title, w) in enumerate(cols):
@@ -92,10 +107,10 @@ class PackManagerDialog(tk.Toplevel):
 
     def _fill(self, sheet, reset_cols=False):
         cols = self.cols
-        data = [[v, p, ver, 'Enabled' if en else 'Disabled']
+        data = [[v, p, ver, 'Enabled' if en else 'Disabled', self._opt_for(ref)]
                 for ref, v, p, ver, en in self._list]
         if not data:
-            data = [['', '', '', '']]
+            data = [['', '', '', '', '']]
         sheet.set_sheet_data(data, reset_col_positions=reset_cols, reset_row_positions=True)
         for i, (key, title, w) in enumerate(cols):
             sheet.column_width(i, w)
@@ -142,7 +157,7 @@ class PackManagerDialog(tk.Toplevel):
         try:
             removed = self._library.remove(ref)
         except Exception as e:
-            tk.messagebox.showwarning('Remove Pack', 'Failed to remove pack:\n%s' % e)
+            messagebox.showwarning('Remove Pack', 'Failed to remove pack:\n%s' % e)
             return
         self._refresh()
         self._fill(self.sheet)
@@ -172,7 +187,7 @@ class PackManagerDialog(tk.Toplevel):
             else:
                 enabled, dev_names = self._library.toggle_enabled(ref)
         except Exception as e:
-            tk.messagebox.showwarning('Toggle Pack', 'Failed to toggle pack:\n%s' % e)
+            messagebox.showwarning('Toggle Pack', 'Failed to toggle pack:\n%s' % e)
             return
         self._refresh()
         self._fill(self.sheet)
@@ -206,4 +221,6 @@ class PackManagerDialog(tk.Toplevel):
         if failures:
             msg = 'Failed to add %d pack(s):\n' % len(failures)
             msg += '\n'.join('  %s: %s' % (n, e) for n, e in failures[:5])
-            tk.messagebox.showwarning('Add Pack', msg)
+            messagebox.showwarning('Add Pack', msg)
+
+

@@ -262,6 +262,13 @@ class PackLibrary:
                 paths.append(os.path.abspath(os.path.join(self._packs_dir, p['path'])))
         return paths
 
+    def path_for_ref(self, ref):
+        """Absolute .pack path for a pack reference (Vendor.Pack.Version)."""
+        for p in self._load_index()['packs']:
+            if p.get('ref') == ref:
+                return os.path.abspath(os.path.join(self._packs_dir, p['path']))
+        return None
+
     def list_packs(self):
         """Returns [(ref, vendor, pack, version, enabled), ...]."""
         return [(p['ref'], p.get('vendor', ''), p.get('pack', ''), p.get('version', ''),

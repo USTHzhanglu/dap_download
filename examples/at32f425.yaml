@@ -1,0 +1,81 @@
+# Option writer example for AT32F425 (RM V2.06 + AT32F425 firmware library).
+# Two parts:
+#   auto  : fixed, self-contained button actions (clicked in the UI, no values)
+#   flow  : used by Apply after the user edits FLASH_USD fields
+# USD block is written as 16-bit data words; hardware stores the complement.
+device: AT32F425
+from_pack: ArteryTek.AT32F425_DFP@2.1.5
+verified: false
+reset_after: true
+
+block:
+  words:
+    - {name: fap,   addr: 0x1FFFF800, default: 0xA5}  # unprotected
+    - {name: ssb,   addr: 0x1FFFF802, default: 0x0000}
+    - {name: data0, addr: 0x1FFFF804}
+    - {name: data1, addr: 0x1FFFF806}
+
+# Fixed button actions: EVERYTHING is here, no variables / no field values.
+auto:
+  erase:
+    - {write: FLASH_UNLOCK, value: 0x45670123}
+    - {write: FLASH_UNLOCK, value: 0xCDEF89AB}
+    - {write: FLASH_USD_UNLOCK, value: 0x45670123}
+    - {write: FLASH_USD_UNLOCK, value: 0xCDEF89AB}
+    - {wait: FLASH_STS, mask: 0x1, eq: 0, timeout_ms: 1000}
+    - {set_bits: FLASH_CTRL, mask: 0x2060}
+    - {wait: FLASH_STS, mask: 0x1, eq: 0, timeout_ms: 1000}
+    - {assert: FLASH_STS, mask: 0x20, eq: 0x20}
+    - {clear_bits: FLASH_CTRL, mask: 0x60}
+    # restore FAP=0xA5 so the chip stays usable after a standalone erase
+    - {set_bits: FLASH_CTRL, mask: 0x10}
+    - {write16: 0x1FFFF800, value: 0xA5}
+    - {wait: FLASH_STS, mask: 0x1, eq: 0, timeout_ms: 1000}
+    - {clear_bits: FLASH_CTRL, mask: 0x10}
+    - {set_bits: FLASH_CTRL, mask: 0x80}
+    - {clear_bits: FLASH_CTRL, mask: 0x200}
+
+# Used by Apply: unlock -> erase -> program fields -> lock.
+flow:
+  unlock:
+    - {write: FLASH_UNLOCK, value: 0x45670123}
+    - {write: FLASH_UNLOCK, value: 0xCDEF89AB}
+    - {write: FLASH_USD_UNLOCK, value: 0x45670123}
+    - {write: FLASH_USD_UNLOCK, value: 0xCDEF89AB}
+  erase:
+    - {wait: FLASH_STS, mask: 0x1, eq: 0, timeout_ms: 1000}
+    - {set_bits: FLASH_CTRL, mask: 0x2060}
+    - {wait: FLASH_STS, mask: 0x1, eq: 0, timeout_ms: 1000}
+    - {assert: FLASH_STS, mask: 0x20, eq: 0x20}
+    - {clear_bits: FLASH_CTRL, mask: 0x60}
+  program:
+    - {set_bits: FLASH_CTRL, mask: 0x10}
+    - {usd_write: true}
+    - {wait: FLASH_STS, mask: 0x1, eq: 0, timeout_ms: 1000}
+    - {assert: FLASH_STS, mask: 0x4, eq: 0}
+  lock:
+    - {set_bits: FLASH_CTRL, mask: 0x80}
+    - {clear_bits: FLASH_CTRL, mask: 0x200}
+
+fields:
+  FAP:
+    enum:
+      none: 0xA5
+      low: 0xFFFF
+      # high: 0xCC
+    read:
+      - {FAP: 0, value: none}
+      - {FAP: 1, FAP_HL: 0, value: low}
+      # - {FAP: 1, FAP_HL: 1, value: high}
+    warning:
+      high: 高等级 FAP 会禁用 SWD 无法恢复。
+    program:
+      - {usd_enum: {word: fap}}
+  nWDT_ATO_EN: {program: [{usd_bit: {word: ssb, bit: 0}}]}
+  nDEPSLP_RST: {program: [{usd_bit: {word: ssb, bit: 1}}]}
+  nSTDBY_RST:  {program: [{usd_bit: {word: ssb, bit: 2}}]}
+  nBOOT1:      {program: [{usd_bit: {word: ssb, bit: 4}}]}
+  nDEPSLP_WDT: {program: [{usd_bit: {word: ssb, bit: 5}}]}
+  nSTDBY_WDT:  {program: [{usd_bit: {word: ssb, bit: 6}}]}
+  USER_D0:     {program: [{usd_byte: {word: data0}}]}
+  USER_D1:     {program: [{usd_byte: {word: data1}}]}

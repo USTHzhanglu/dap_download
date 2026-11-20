@@ -5,6 +5,10 @@ import gc
 import logging
 from typing import Callable, Optional
 
+import pyocd_svd_fix
+
+pyocd_svd_fix.apply()
+
 from pyocd.core.helpers import ConnectHelper
 from pyocd.flash.file_programmer import FileProgrammer
 from pyocd.flash.eraser import FlashEraser
