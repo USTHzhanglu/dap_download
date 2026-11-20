@@ -25,6 +25,7 @@ A visual MCU flash tool based on Tkinter + pyOCD
 - SWD / JTAG with adjustable frequency
 - bin / hex / elf / srec firmware, full-chip erase
 - Built-in Pack manager
+- Option bytes read/write (YAML descriptors)
 - Drag & drop support
 
 ## Usage
@@ -50,5 +51,22 @@ pyinstaller packaging\dap_downloader.spec
 **Erase**: pick chip → Erase Chip → confirm.
 
 Pack management and drag & drop are handled in the GUI.
+
+## Option Bytes
+
+Some chips expose option-byte registers through the pack SVD; they are read and written with a YAML descriptor placed in `option_bytes/`.
+
+| State | Description |
+| --- | --- |
+| No descriptor | All option-byte fields are shown, but read-only |
+| Descriptor imported | Fields implemented by the YAML (with a `program` fragment) become editable; the rest stay read-only |
+| AUTO actions | Fixed operations declared in the `auto` section (e.g. Erase) appear as buttons and run on click |
+
+<div>
+<img src="res/option_bytes_readonly.png" alt="Option Bytes (read-only)" width="420"/>
+<img src="res/option_bytes_writable.png" alt="Option Bytes (writable)" width="420"/>
+</div>
+
+Descriptors live in the `option_bytes/` folder next to the executable and are matched by `from_pack` + `device`; the filename is arbitrary. See [examples/option_bytes/at32f425.yaml](examples/option_bytes/at32f425.yaml); the format reference and adding-a-new-chip steps are in [examples/option_bytes/README.en.md](examples/option_bytes/README.en.md). The **Import...** button loads and copies a descriptor into `option_bytes/` (or drag a `.yaml` onto the main window to Import); on first open without a descriptor, a skeleton is generated from the current chip SVD and shown in the window hint.
 
 > Keep the J-Link driver at ≤ 9.12.

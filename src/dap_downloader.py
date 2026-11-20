@@ -13,6 +13,8 @@ import tkinter.messagebox
 from core import Flasher
 from version import __appname__, __version__, __author__, __copyright__
 from pack_manager import PackLibrary
+from ob.descriptors import ObProvider
+from ob.programmer import ObProgrammer
 from tksheet import Sheet
 from target_picker import TargetPickerDialog
 from probe_picker import ProbePickerDialog
@@ -60,6 +62,7 @@ class PyocdApp:
         self._flasher = Flasher(log=self._append_log, progress=self._on_progress,
                                 done=self._on_done)
         self._library = PackLibrary()
+        self._ob_provider = ObProvider(self._library)
         self._dialog_open = False
         self._current_dialog = None
         self._progress_dlg = None
@@ -140,8 +143,20 @@ class PyocdApp:
 
         self.data_group.pack(fill='x', side='top', padx='3p', pady='2p')
 
-        self.start = ttk.Button(self.gui, text='Program Device', command=self.download)
-        self.start.pack(fill='x', padx='3p', pady='2p')
+        action_row = tk.Frame(self.gui)
+        action_row.pack(fill='x', padx='3p', pady='2p')
+        action_row.columnconfigure(0, weight=1)
+        action_row.columnconfigure(1, minsize=3)
+        self.start = ttk.Button(action_row, text='Program Device', command=self.download)
+        self.start.grid(row=0, column=0, columnspan=3, sticky='ew')
+        self._ob_holder = tk.Frame(action_row)
+        self._ob_holder.grid(row=0, column=2, sticky='e')
+        self._ob_holder.pack_propagate(False)
+        self.ob_btn = ttk.Button(self._ob_holder, text='Option Bytes',
+                                 command=self._open_ob_dialog)
+        self.ob_btn.pack(fill='both', expand=True)
+        self._ob_holder.grid_remove()
+        self.action_row = action_row
 
         self.log_group = ttk.Labelframe(self.gui, text='Log')
         self.log_group.pack(fill='both', expand=True, side='top', padx='3p', pady=(0, '2p'))
@@ -340,6 +355,7 @@ class PyocdApp:
             self._selected_target = name
             self.target_btn.set(name)
             self._fill_bin_addr(name)
+            self._refresh_ob_button()
 
         self._dialog_open = True
         self._set_drop_accept(False)
@@ -355,6 +371,7 @@ class PyocdApp:
                 self._selected_target = None
                 self.target_btn.set('Not Select')
             self._append_log('Pack removed (%d devices)' % len(removed))
+            self._refresh_ob_button()
 
         def on_added(ref, count, already):
             if already:
@@ -370,7 +387,99 @@ class PyocdApp:
 
         self._dialog_open = True
         self._set_drop_accept(False)
-        dlg = PackManagerDialog(self.toplevel1, self._library, on_removed, on_added, on_toggled)
+        dlg = PackManagerDialog(self.toplevel1, self._library,
+                                provider=self._ob_provider,
+                                on_removed=on_removed,
+                                on_added=on_added,
+                                on_toggled=on_toggled)
+        self._current_dialog = dlg
+        dlg.bind('<Destroy>', self._on_dialog_destroy, add='+')
+
+    def _refresh_ob_button(self):
+        descriptor = None
+        target = getattr(self, '_selected_target', None)
+        if target:
+            try:
+                descriptor = self._ob_provider.descriptor_for_target(target)
+            except Exception:
+                descriptor = None
+        if descriptor is None:
+            self._ob_holder.grid_remove()
+            self.start.grid_configure(columnspan=3)
+            return
+        self.start.grid_configure(columnspan=1)
+        self.ob_btn.configure(state='normal')
+        self._ob_holder.grid()
+        self._align_ob_button()
+        self.toplevel1.after_idle(self._align_ob_button)
+        self.toplevel1.after(80, self._align_ob_button)
+
+    def _align_ob_button(self):
+        """Match the Option Bytes button size/position to Erase Chip."""
+        if not getattr(self, '_ob_holder', None):
+            return
+        try:
+            self.toplevel1.update_idletasks()
+            width = self.erase.winfo_width()
+            height = self.erase.winfo_height()
+            if width <= 1:
+                width = self.erase.winfo_reqwidth()
+            if height <= 1:
+                height = self.erase.winfo_reqheight()
+            if width <= 1:
+                return
+            row_right = self.action_row.winfo_rootx() + self.action_row.winfo_width()
+            erase_right = self.erase.winfo_rootx() + self.erase.winfo_width()
+            extra = max(0, row_right - erase_right)
+            # A fixed-size holder forces the button to exactly the Erase size;
+            # the right inset lines up the two right edges.
+            self._ob_holder.configure(width=width, height=height)
+            self._ob_holder.grid_configure(padx=(0, extra))
+        except Exception:
+            pass
+
+    def _open_ob_dialog(self):
+        target = getattr(self, '_selected_target', None)
+        if not target:
+            return
+        try:
+            descriptor = self._ob_provider.descriptor_for_target(target)
+        except Exception as e:
+            self._append_log('Option bytes: %s' % e)
+            return
+        if descriptor is None:
+            return
+        from ob.writer import ensure_template, find_writer
+        spec = find_writer(descriptor)
+        template = ''
+        if spec is None:
+            try:
+                template = ensure_template(descriptor)
+            except Exception as exc:
+                self._append_log('Option bytes template: %s' % exc)
+        if template:
+            self._append_log('Option bytes template created: %s' % template)
+        speed = self._parse_speed(self.speed_entry.get()) if hasattr(self, 'speed_entry') else None
+        interface = self.interface_entry.get() if hasattr(self, 'interface_entry') else None
+        programmer = ObProgrammer(
+            target=target,
+            pack_paths=self._library.get_pack_paths(target),
+            probe_id=getattr(self, '_selected_probe', None),
+            speed_hz=speed,
+            interface=interface,
+        )
+        self._dialog_open = True
+        self._set_drop_accept(False)
+        try:
+            from ob.writer_dialog import OptionWriterDialog
+            dlg = OptionWriterDialog(self.toplevel1, programmer,
+                                     descriptor, spec,
+                                     template_created=template)
+        except Exception as e:
+            self._dialog_open = False
+            self._set_drop_accept(True)
+            self._append_log('Option bytes: %s' % e)
+            return
         self._current_dialog = dlg
         dlg.bind('<Destroy>', self._on_dialog_destroy, add='+')
 
@@ -417,10 +526,14 @@ class PyocdApp:
             return
         packs = []
         firmware = None
+        descriptors = []
         for raw in files:
             p = raw.decode('utf-8', errors='replace') if isinstance(raw, bytes) else raw
-            if p.lower().endswith('.pack'):
+            lower = p.lower()
+            if lower.endswith('.pack'):
                 packs.append(p)
+            elif lower.endswith(('.yaml', '.yml')):
+                descriptors.append(p)
             elif firmware is None:
                 firmware = p
         for p in packs:
@@ -431,6 +544,16 @@ class PyocdApp:
             self._set_bin_addr_visibility(firmware)
             self.bin_entry.update_idletasks()
             self.bin_entry.xview_moveto(1.0)
+        for descriptor in descriptors:
+            from ob.writer import install_writer_file
+            try:
+                path = install_writer_file(descriptor)
+            except Exception as exc:
+                tk.messagebox.showwarning(
+                    'Option Bytes',
+                    'Failed to load descriptor:\n\n%s' % exc)
+                continue
+            self._append_log('Descriptor loaded: %s' % path)
 
     def _install_pack(self, path):
         try:

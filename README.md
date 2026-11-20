@@ -25,6 +25,7 @@
 - SWD / JTAG，频率可调
 - 支持 bin / hex / elf / srec，全片擦除
 - 集成 Pack 管理器
+- 选项字读写（YAML 描述文件）
 - 支持拖放导入
 
 ## 使用
@@ -50,5 +51,22 @@ pyinstaller packaging\dap_downloader.spec
 **擦除**：选芯片 → Erase Chip → 确认。
 
 Pack 管理与拖放均在界面内完成。
+
+## 选项字（Option Bytes）
+
+部分芯片的选项字寄存器可以通过 pack 的 SVD 自动识别，配合 `option_bytes/` 下的 YAML 描述文件进行读写。
+
+| 状态 | 说明 |
+| --- | --- |
+| 未导入描述 | 显示全部选项字字段，但全部只读 |
+| 导入描述后 | YAML 中实现（声明了 program 片段）的字段可编辑，其余保持只读 |
+| AUTO 动作 | YAML 中 `auto` 段定义的固定操作（如 Erase）以按钮显示，点击执行 |
+
+<div>
+<img src="res/option_bytes_readonly.png" alt="Option Bytes (read-only)" width="420"/>
+<img src="res/option_bytes_writable.png" alt="Option Bytes (writable)" width="420"/>
+</div>
+
+描述文件放在程序目录的 `option_bytes/` 下，通过 `from_pack` + `device` 匹配芯片，文件名任意。示例见 [examples/option_bytes/at32f425.yaml](examples/option_bytes/at32f425.yaml)，格式说明与新增芯片的步骤见 [examples/option_bytes/README.md](examples/option_bytes/README.md)。窗口左下角的 **Import...** 可导入文件到 `option_bytes/`，也可直接拖 `.yaml` 到主窗口来导入）；首次打开时若没有描述文件，会根据当前芯片 SVD 自动生成骨架并在窗口内提示。
 
 > J-Link 驱动建议 ≤ 9.12。
