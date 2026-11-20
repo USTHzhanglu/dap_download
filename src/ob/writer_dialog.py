@@ -1,19 +1,22 @@
 # coding: utf-8
 """Option-byte writer window: YAML flow + per-field program fragments."""
 
+import os
 import queue
 import threading
 import tkinter as tk
 import tkinter.ttk as ttk
 import tkinter.messagebox as messagebox
 
-from .writer import WriterError, WriterSpec, run_action, run_writer
+from .writer import (WriterError, WriterSpec, load_writer, run_action,
+                     run_writer)
 
 FONT = ('', 8)
 FONT_BOLD = ('', 8, 'bold')
 FONT_MONO = ('Consolas', 8)
 COLUMNS = 2
-HINT_IMPORT = 'Import a descriptor file to enable option-byte writing.'
+HINT_IMPORT = ('Edit the generated descriptor to enable writing;\n'
+               'Import loads a descriptor file from someone else.')
 MIN_WIDTH = 720
 MIN_HEIGHT = 480
 WINDOW_WIDTH = 720
@@ -22,8 +25,10 @@ WINDOW_WIDTH = 720
 class OptionWriterDialog(tk.Toplevel):
     """Write option bytes using a writer YAML (flow + field fragments)."""
 
-    def __init__(self, master, programmer, descriptor, spec=None):
+    def __init__(self, master, programmer, descriptor, spec=None,
+                 template_created=''):
         super().__init__(master)
+        self._template_created = template_created or ''
         self.title('Option Bytes - %s' % descriptor.device.lstrip('-_'))
         self.transient(master)
         self.withdraw()
@@ -35,6 +40,7 @@ class OptionWriterDialog(tk.Toplevel):
                               flow={}, fields={}, auto={})
         self._spec = spec
         self._can_write = bool(spec.fields)
+        self._spec_mtime = self._file_mtime(spec.path)
         self._closed = False
         self._value_vars = {}
         self._choice_vars = {}
@@ -64,6 +70,7 @@ class OptionWriterDialog(tk.Toplevel):
             by_register.setdefault(field['register'], []).append(field)
 
         self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
         probe = ttk.Combobox(self)
         self.update_idletasks()
         self._row_height = max(probe.winfo_reqheight(), 24) + 2
@@ -84,8 +91,24 @@ class OptionWriterDialog(tk.Toplevel):
                           padx=6, pady=2)
 
         if not self._can_write:
-            tk.Label(body, text=HINT_IMPORT, font=FONT, fg='#666666',
-                     anchor='w').pack(fill='x', padx=3, pady=(0, 6))
+            hint = HINT_IMPORT
+            if self._template_created:
+                hint = ('A default descriptor template was created:\n%s\n'
+                        % self._template_created) + HINT_IMPORT
+            tk.Label(body, text=hint, font=FONT, fg='#666666', anchor='w',
+                     justify='left',
+                     wraplength=WINDOW_WIDTH - 30).pack(
+                         fill='x', padx=3, pady=(0, 6))
+
+        if getattr(self._spec, 'pack_mismatch', False):
+            tk.Label(
+                body,
+                text=('Note: descriptor targets pack %s; installed pack is %s. '
+                      'Verify the register layout before writing.'
+                      % (self._spec.from_pack, self._descriptor.from_pack)),
+                font=FONT, fg='#a05200', anchor='w', justify='left',
+                wraplength=WINDOW_WIDTH - 30).pack(
+                    fill='x', padx=3, pady=(0, 6))
 
         # Fixed AUTO actions: own section, max 4 per row, equal widths.
         self._action_btns = []
@@ -185,9 +208,37 @@ class OptionWriterDialog(tk.Toplevel):
         else:
             self._apply_btn.configure(state='normal')
 
+    @staticmethod
+    def _file_mtime(path):
+        try:
+            return os.path.getmtime(path)
+        except OSError:
+            return 0.0
+
+    def _reload_spec(self):
+        """Reload the current YAML if the user edited it on disk."""
+        path = getattr(self._spec, 'path', '')
+        mtime = self._file_mtime(path)
+        if not path or not mtime or mtime == self._spec_mtime:
+            return False
+        spec = load_writer(path)
+        if not spec.valid:
+            return False
+        if not spec.matches(self._descriptor):
+            if not spec.matches_family(self._descriptor):
+                return False
+            spec.pack_mismatch = True
+        self._spec = spec
+        self._can_write = bool(spec.fields)
+        self._spec_mtime = mtime
+        self._template_created = ''
+        self._rebuild_ui()
+        return True
+
     def _start_read(self):
         if self._closed:
             return
+        self._reload_spec()
         self._set_busy(True)
         threading.Thread(target=self._read_worker, daemon=True).start()
         self._poll()
@@ -256,13 +307,15 @@ class OptionWriterDialog(tk.Toplevel):
     # ---------------------------------------------------------------- load YAML
     def _load_yaml(self):
         from tkinter import filedialog
-        from .writer import install_writer
         path = filedialog.askopenfilename(
             parent=self, title='Load option-byte YAML',
             filetypes=[('Option byte YAML', '*.yaml *.yml'),
                        ('All files', '*.*')])
-        if not path:
-            return
+        if path:
+            self._import_path(path)
+
+    def _import_path(self, path, start_read=True):
+        from .writer import install_writer
         try:
             spec = install_writer(path, self._descriptor)
         except Exception as exc:
@@ -270,8 +323,11 @@ class OptionWriterDialog(tk.Toplevel):
             return
         self._spec = spec
         self._can_write = bool(spec.fields)
+        self._spec_mtime = self._file_mtime(spec.path)
+        self._template_created = ''
         self._rebuild_ui()
-        self._start_read()
+        if start_read:
+            self._start_read()
 
     def _content_height(self):
         height = max(MIN_HEIGHT, self.winfo_reqheight())
@@ -321,6 +377,9 @@ class OptionWriterDialog(tk.Toplevel):
         return values, choices, changed
 
     def _apply(self):
+        if self._reload_spec():
+            self._start_read()
+            return
         if not self._can_write:
             return
         try:

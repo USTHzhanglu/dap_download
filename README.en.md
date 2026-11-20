@@ -67,6 +67,6 @@ Some chips expose option-byte registers through the pack SVD; they are read and 
 <img src="res/option_bytes_writable.png" alt="Option Bytes (writable)" width="420"/>
 </div>
 
-Descriptors live in the `option_bytes/` folder next to the executable and are matched by `from_pack` + `device`; the filename is arbitrary. See [examples/option_bytes/at32f425.yaml](examples/option_bytes/at32f425.yaml). The **Import...** button loads and copies a descriptor into `option_bytes/`.
+Descriptors live in the `option_bytes/` folder next to the executable and are matched by `from_pack` + `device`; the filename is arbitrary. See [examples/option_bytes/at32f425.yaml](examples/option_bytes/at32f425.yaml); the format reference and adding-a-new-chip steps are in [examples/option_bytes/README.en.md](examples/option_bytes/README.en.md). The **Import...** button loads and copies a descriptor into `option_bytes/` (or drag a `.yaml` onto the main window to Import); on first open without a descriptor, a skeleton is generated from the current chip SVD and shown in the window hint.
 
 > Keep the J-Link driver at ≤ 9.12.

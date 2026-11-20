@@ -35,6 +35,12 @@ def pack_key(value: str) -> str:
     return (value or '').replace('@', '.').strip().lower()
 
 
+def pack_family(value: str) -> str:
+    """Vendor/pack name without the version (e.g. arterytek.at32f425_dfp)."""
+    base = (value or '').split('@', 1)[0]
+    return re.sub(r'[^a-z0-9]', '', base.lower())
+
+
 def _tokens(name: str):
     return {t for t in re.split(r'[^A-Za-z0-9]+', name.upper()) if t}
 

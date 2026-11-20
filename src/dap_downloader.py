@@ -449,8 +449,16 @@ class PyocdApp:
             return
         if descriptor is None:
             return
-        from ob.writer import find_writer
+        from ob.writer import ensure_template, find_writer
         spec = find_writer(descriptor)
+        template = ''
+        if spec is None:
+            try:
+                template = ensure_template(descriptor)
+            except Exception as exc:
+                self._append_log('Option bytes template: %s' % exc)
+        if template:
+            self._append_log('Option bytes template created: %s' % template)
         speed = self._parse_speed(self.speed_entry.get()) if hasattr(self, 'speed_entry') else None
         interface = self.interface_entry.get() if hasattr(self, 'interface_entry') else None
         programmer = ObProgrammer(
@@ -465,7 +473,8 @@ class PyocdApp:
         try:
             from ob.writer_dialog import OptionWriterDialog
             dlg = OptionWriterDialog(self.toplevel1, programmer,
-                                     descriptor, spec)
+                                     descriptor, spec,
+                                     template_created=template)
         except Exception as e:
             self._dialog_open = False
             self._set_drop_accept(True)
@@ -517,10 +526,14 @@ class PyocdApp:
             return
         packs = []
         firmware = None
+        descriptors = []
         for raw in files:
             p = raw.decode('utf-8', errors='replace') if isinstance(raw, bytes) else raw
-            if p.lower().endswith('.pack'):
+            lower = p.lower()
+            if lower.endswith('.pack'):
                 packs.append(p)
+            elif lower.endswith(('.yaml', '.yml')):
+                descriptors.append(p)
             elif firmware is None:
                 firmware = p
         for p in packs:
@@ -531,6 +544,16 @@ class PyocdApp:
             self._set_bin_addr_visibility(firmware)
             self.bin_entry.update_idletasks()
             self.bin_entry.xview_moveto(1.0)
+        for descriptor in descriptors:
+            from ob.writer import install_writer_file
+            try:
+                path = install_writer_file(descriptor)
+            except Exception as exc:
+                tk.messagebox.showwarning(
+                    'Option Bytes',
+                    'Failed to load descriptor:\n\n%s' % exc)
+                continue
+            self._append_log('Descriptor loaded: %s' % path)
 
     def _install_pack(self, path):
         try:

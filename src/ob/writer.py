@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import yaml
 
 from .catalog import resolve_regs, validate_sequence
-from .descriptors import normalize, pack_key
+from .descriptors import normalize, pack_family, pack_key
 
 FRAGMENT_OPS = ('usd_bit', 'usd_byte', 'usd_const', 'usd_enum')
 
@@ -42,17 +42,28 @@ class WriterSpec:
     reset_after: bool = True
     path: str = ''
     error: str = ''
+    pack_mismatch: bool = False
 
     @property
     def valid(self) -> bool:
         return not self.error
 
-    def matches(self, descriptor) -> bool:
-        if pack_key(self.from_pack) != pack_key(descriptor.from_pack):
-            return False
+    def _device_match(self, descriptor) -> bool:
         wanted = {normalize(name) for name in descriptor.devices}
         wanted.add(normalize(descriptor.device))
         return normalize(self.device) in wanted
+
+    def matches(self, descriptor) -> bool:
+        """Exact pack version match (preferred)."""
+        if pack_key(self.from_pack) != pack_key(descriptor.from_pack):
+            return False
+        return self._device_match(descriptor)
+
+    def matches_family(self, descriptor) -> bool:
+        """Same vendor/pack name, possibly a different pack version."""
+        if pack_family(self.from_pack) != pack_family(descriptor.from_pack):
+            return False
+        return self._device_match(descriptor)
 
     def choice_for(self, field_name: str, values: Dict[str, int]) -> str:
         """Reverse-map register values to an enum choice (via read rules)."""
@@ -133,6 +144,11 @@ def _validate_fragments(field_name: str, ops: Any) -> List[str]:
             for msg in validate_sequence([step])
         )
     return errors
+
+
+def load_writer(path: str) -> WriterSpec:
+    """Parse one writer YAML file (used by the dialog for auto-reload)."""
+    return _parse_spec(path)
 
 
 def _parse_spec(path: str) -> WriterSpec:
@@ -251,15 +267,111 @@ def load_writers(directory: Optional[str] = None) -> List[WriterSpec]:
 
 
 def find_writer(descriptor, directory: Optional[str] = None) -> Optional[WriterSpec]:
+    fallback = None
     for spec in load_writers(directory):
-        if spec.valid and spec.matches(descriptor):
+        if not spec.valid:
+            continue
+        if spec.matches(descriptor):
             return spec
-    return None
+        if fallback is None and spec.matches_family(descriptor):
+            fallback = spec
+    if fallback is not None:
+        fallback.pack_mismatch = True
+    return fallback
 
 
 def _file_key(text: str) -> str:
     key = re.sub(r'[^A-Za-z0-9]+', '_', text or '').strip('_').lower()
     return key or 'device'
+
+
+def build_template(descriptor) -> str:
+    """Build an editable skeleton writer YAML from the SVD descriptor."""
+    fields = descriptor.fields or []
+    try:
+        regs = resolve_regs(descriptor.regs or {})
+    except Exception:
+        regs = {key: value for key, value in (descriptor.regs or {}).items()
+                if isinstance(value, int)}
+    lines = [
+        '# Generated skeleton - edit before use.',
+        '# Register/field names below come from this chip\'s SVD; they are NOT',
+        '# universal (FLASH_UNLOCK, FLASH_CTRL, ... differ between vendors).',
+        '',
+        'device: %s' % descriptor.device,
+        'from_pack: %s' % descriptor.from_pack,
+        'verified: false',
+        'reset_after: true',
+        '',
+        '# Option-byte data block. Uncomment and fill from the reference manual.',
+        '# block:',
+        '#   words:',
+        '#     - {name: word0, addr: 0x00000000, default: 0xFFFF}',
+        '',
+        '# Fixed button actions (same syntax as flow steps).',
+        'auto: {}',
+        '',
+        'flow:',
+        '  # TODO: unlock keys/registers for this chip',
+        '  unlock: []',
+        '  # TODO: erase sequence',
+        '  erase: []',
+        '  # Keep usd_write if the chip uses block.words; otherwise write',
+        '  # explicit write16/write_mem steps.',
+        '  program:',
+        '    - {usd_write: true}',
+        '  # TODO: lock sequence',
+        '  lock: []',
+        '',
+        '# Only fields listed here become writable. Copy a field name below',
+        '# and add a program fragment; SVD candidates:',
+        'fields: {}',
+    ]
+    for name in sorted(regs):
+        lines.append('#   reg %-24s = 0x%08X' % (name, int(regs[name])))
+    for field in fields:
+        lines.append('#   field %-18s %s bit %d width %d'
+                     % (field.get('name', '?'), field.get('register', '?'),
+                        int(field.get('bit', 0)), int(field.get('width', 1))))
+    return '\n'.join(lines) + '\n'
+
+
+def template_path(descriptor, directory: Optional[str] = None) -> str:
+    target_dir = os.path.abspath(directory or _default_dir())
+    return os.path.join(target_dir, _file_key(descriptor.device) + '.yaml')
+
+
+def write_template(descriptor, directory: Optional[str] = None) -> str:
+    """Write a skeleton writer YAML into option_bytes/ and return its path."""
+    path = template_path(descriptor, directory)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w', encoding='utf-8') as handle:
+        handle.write(build_template(descriptor))
+    return path
+
+
+def ensure_template(descriptor, directory: Optional[str] = None) -> str:
+    """Create the skeleton on first use; return its path only when created."""
+    path = template_path(descriptor, directory)
+    if os.path.exists(path):
+        return ''
+    write_template(descriptor, directory)
+    return path
+
+
+def install_writer_file(source_path: str,
+                        directory: Optional[str] = None) -> str:
+    """Validate a descriptor and copy it into option_bytes/ (no device check)."""
+    spec = _parse_spec(source_path)
+    if not spec.valid:
+        raise WriterError(spec.error)
+    target_dir = os.path.abspath(directory or _default_dir())
+    os.makedirs(target_dir, exist_ok=True)
+    target = os.path.join(target_dir, _file_key(spec.device) + '.yaml')
+    if os.path.normcase(os.path.abspath(source_path)) != os.path.normcase(target):
+        import shutil
+        shutil.copyfile(source_path, target)
+    return target
 
 
 def install_writer(source_path: str, descriptor,
@@ -269,17 +381,24 @@ def install_writer(source_path: str, descriptor,
     if not spec.valid:
         raise WriterError(spec.error)
     if not spec.matches(descriptor):
-        raise WriterError('YAML does not match this device: %s / %s'
-                          % (spec.device, spec.from_pack))
+        if not spec.matches_family(descriptor):
+            raise WriterError(
+                'YAML does not match this device.\n\n'
+                'YAML:   %s / %s\n'
+                'Device: %s / %s'
+                % (spec.device, spec.from_pack,
+                   descriptor.device, descriptor.from_pack))
+        spec.pack_mismatch = True
     target_dir = os.path.abspath(directory or _default_dir())
     os.makedirs(target_dir, exist_ok=True)
     target = os.path.join(target_dir, _file_key(spec.device) + '.yaml')
-    if os.path.abspath(source_path) != target:
+    if os.path.normcase(os.path.abspath(source_path)) != os.path.normcase(target):
         import shutil
         shutil.copyfile(source_path, target)
     installed = _parse_spec(target)
     if not installed.valid:
         raise WriterError(installed.error)
+    installed.pack_mismatch = spec.pack_mismatch
     return installed
 
 

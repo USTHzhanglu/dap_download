@@ -11,3 +11,4 @@ dist/
 
 **/packs/*
 **/option_bytes/*
+!examples/option_bytes/**

@@ -2,7 +2,8 @@
 # Two parts:
 #   auto  : fixed, self-contained button actions (clicked in the UI, no values)
 #   flow  : used by Apply after the user edits FLASH_USD fields
-# USD block is written as 16-bit data words; hardware stores the complement.
+# AT32 USD: 16-bit data word + hardware-generated complement. usd_write
+# implements this per-word sequence; other families may need explicit writes.
 device: AT32F425
 from_pack: ArteryTek.AT32F425_DFP@2.1.5
 verified: false

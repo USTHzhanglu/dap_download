@@ -67,6 +67,6 @@ Pack 管理与拖放均在界面内完成。
 <img src="res/option_bytes_writable.png" alt="Option Bytes (writable)" width="420"/>
 </div>
 
-描述文件放在程序目录的 `option_bytes/` 下，通过 `from_pack` + `device` 匹配芯片，文件名任意。示例见 [examples/option_bytes/at32f425.yaml](examples/option_bytes/at32f425.yaml)。窗口左下角的 **Import...** 可加载文件并复制到 `option_bytes/`。
+描述文件放在程序目录的 `option_bytes/` 下，通过 `from_pack` + `device` 匹配芯片，文件名任意。示例见 [examples/option_bytes/at32f425.yaml](examples/option_bytes/at32f425.yaml)，格式说明与新增芯片的步骤见 [examples/option_bytes/README.md](examples/option_bytes/README.md)。窗口左下角的 **Import...** 可导入文件到 `option_bytes/`，也可直接拖 `.yaml` 到主窗口来导入）；首次打开时若没有描述文件，会根据当前芯片 SVD 自动生成骨架并在窗口内提示。
 
 > J-Link 驱动建议 ≤ 9.12。
